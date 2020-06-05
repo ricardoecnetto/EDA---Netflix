@@ -1,2 +1,4 @@
-# ETL-Data-Visualization
-This is a set of data science projects, from ETL to Data Visualization, adressing datasets and topics that I find interesting.
+# Exploratory Data Analysis -> Netflix Dataset
+The dataset is a .csv file from kaagle.
+The .Rmd file is available and you can run it in RStudio. Please make sure you have all the libraries used installed.
+The code is detailed in the .Rmd file.
