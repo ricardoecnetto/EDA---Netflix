@@ -1,0 +1,468 @@
+---
+title: "Exploratory Data Analysis - Netflix Dataset"
+author: "Ricardo Neto"
+date: "02/06/2020"
+output:
+  html_document: default
+  pdf_document: default
+  word_document: default
+---
+```{r}
+knitr::opts_chunk$set(echo = T)
+```
+
+### 1. Netflix
+
+**Netflix** is a streaming service that allows members to watch a wide variety of award-winning TV shows, movies, documentaries, and more on internet-connected devices. Since 2012, Netflix started to produce and distribute its own movies and television series and,in 2016, it has released **126 original series and films**, more than any other network or cable channel.By 2016, Netflix services operated in more than **190 countries**.
+
+#### 1.1 About the dataset
+
+This dataset consists of movies and television shows available on Netflix until January 2019.
+Below are the variables and correspondent description:
+
+- **show_id**: Unique ID for every Movie / TV Show
+- **type**:Identifier - A Movie or TV Show
+- **title**:Title of the Movie or TV Show
+- **director**:Director of the Movie /TV Show 
+- **cast**:Actors involved in the Movie / TV Show
+- **country**:Country where the movie / show was produced
+- **date_added**:Added date on Netflix
+- **release_year**:Actual release year of the Movie / TV Show
+- **rating**:Rating type of the Movie or TV Show
+- **duration**:Total Duration - in minutes or number of seasons
+- **listed_in**:Genre
+- **description**:The summary description
+
+### 2. Importing Data
+
+The first step is to read the data. The dataset was downloaded from Kaagle and the format is .csv.
+
+```{r}
+netflix_titles<-read.csv("C:/Users/Lenovo/Desktop/Data Science R/Projetos pessoais/Netflix/netflix_titles.csv",sep=",",header=T, na.strings=c(""))
+
+```
+
+The argument 'na.strings' was added because some missing values were not recognized as NA.This argument prevents future issues when dealing with NA values.
+
+This dataset has 6234 rows and 12 columns.
+
+```{r}
+dim(netflix_titles)
+```
+
+And below is a preview of how the dataset looks like (first 3 rows).
+
+```{r, message=FALSE}
+library(tibble)
+netflix_titles<-as_tibble(netflix_titles)
+
+library(knitr)
+library(kableExtra)
+kable(netflix_titles[1:3,], caption="Netflix Dataset") %>% kable_styling(bootstrap_options = c("striped", "hover","condensed"), full_width=F, position="left")%>% column_spec(c(5,12), width_min = "30em")
+```
+
+
+### 3. Cleaning Data
+
+#### 3.1 Variable Types
+
+Let's begin by checking the types of variables and see if any changes are needed.
+
+```{r}
+sapply(netflix_titles,class)
+```
+
+Variables 'type','rating' and 'listed_in' should be defined as categorical and 'date_added' as date.
+
+```{r}
+netflix_titles$type<-as.factor(netflix_titles$type)
+netflix_titles$rating<-as.factor(netflix_titles$rating)
+netflix_titles$listed_in<-as.factor(netflix_titles$listed_in)
+```
+
+
+```{r, message=FALSE}
+library(lubridate)
+netflix_titles$date_added<-mdy(netflix_titles$date_added)
+```
+
+#### 3.2 Removing unnecessary variables
+
+Some variables are not necessary so that we can remove them. The first and last variables, 'show_id' and 'description' are not relevant and can be removed.
+
+```{r}
+netflix_titles<-netflix_titles[,-c(1,12)]
+```
+
+#### 3.3 Treating NA values
+
+Now it is time to check for NA values in the dataset. Below is a function that counts the number of NAs in each variable.
+
+```{r}
+count_NAs<-function(z)
+{
+  nr_NAs=NULL
+  for (i in 1:ncol(z))
+  {
+    nr_NAs[i]<-sum(is.na(z[i]))
+  }
+  
+  return(data.frame("Variable"=names(netflix_titles),"Nr_NAs"=nr_NAs))
+}
+
+kable(count_NAs(netflix_titles)) %>% kable_styling(bootstrap_options = c("striped", "hover","condensed"), full_width=F, position="left")
+```
+
+As we can see, 'director', 'cast' and 'country' are the variables with more missing values, followed by some missings in 'date_added' and 'rating'.
+
+As 'rating' is a categorical value, we can try to fill the missing values by the mode of non-missing cases of the variable.
+
+```{r}
+mode <- function(x) {                    
+  unique_x <- unique(x)
+  tabulate_x <- tabulate(match(x, unique_x))
+  unique_x[tabulate_x == max(tabulate_x)]
+}
+
+netflix_titles$rating[is.na(netflix_titles$rating)]<-mode(netflix_titles$rating)
+
+```
+
+Now the variable 'rating' is totally filled.
+
+```{r}
+sum(is.na(netflix_titles$rating))
+
+```
+
+#### 3.4 Removing Duplicated Rows
+
+To conclude the data cleaning process, we must make sure that there's no duplicated rows.
+The code below shows that there is an Indian Movie called "Sarkar" that is duplicated.
+
+```{r}
+kable(netflix_titles[duplicated(netflix_titles), ])%>% kable_styling(bootstrap_options = c("striped", "hover","condensed"), full_width=F, position="left")
+```
+
+Using the function 'Distinct' we can remove the duplicated row.
+
+```{r, message=FALSE}
+library(tidyverse)
+netflix_titles<-distinct(netflix_titles)
+```
+
+### 4. Data Visualization
+
+Now that the data is clean, it is time to explore the dataset with visual methods.
+Given the type of variables, I think that it would be interesting to analyze:
+
+- **Amount of content by Type**
+- **Amount of content by time**
+- **Content Produced by Country**
+- **Content by Rating**
+- **Content by Duration**
+- **Most starred actors**
+- **Producers by Content**
+
+#### 4.1 Amount of Content by Type
+
+To do analyse the amount of content by type, we'll group the dataset by type and count the occurrences for each one.Also, we'll add a new column that calculates the percentages.
+
+```{r}
+amount_by_type<-netflix_titles %>% group_by(type) %>% summarise(count=(n())) %>% mutate(pct=count/sum(count)) 
+```
+
+Now that the data is ready, we can use ggplot to visualize the amount of content by type in a bar plot.
+
+```{r, message=FALSE}
+library(ggplot2)
+ggplot(amount_by_type,aes(type,y=`count`, fill=type))+ 
+                              geom_col(fill=c("#CCCC00","#404040")) + 
+                              geom_text(aes(label = scales::percent(pct)),vjust=-0.2,size=5)+                                                                 xlab("Netflix Content Type") + ylab("Amount") + 
+                              ggtitle("Amount of Netflix Content by Type") +
+                              theme(plot.title = element_text(hjust = 0.5))
+```
+
+As we can see, the amount of Movies is more than twice the amount of TV Shows on Netflix.
+
+The next question we will answer is: How has the amount of content evolved over time?
+
+#### 4.2 Amount of Content by Time
+
+In this graph, we'll want to show the evolution of the amount of content by type over the years.
+We need to create a new dataframe with variables 'type' and 'date_added' and then select only the year from the date.
+
+```{r}
+
+amount_by_time<-netflix_titles %>% select(type,date_added)
+amount_by_time$date_added<-year(amount_by_time$date_added)
+amount_by_time<-amount_by_time %>% group_by(date_added,type) %>% na.omit(date_added) %>%summarise(count=n())
+
+```
+ 
+Now that we have our new dataframe, we can visualize the evolution of the content by type over time.
+
+```{r}
+ggplot(amount_by_time,aes(date_added,`count`, fill=type)) + 
+  geom_line(aes(colour=type), size=2)+  
+  scale_color_manual(values=c("#CCCC00","#404040"))+
+  scale_x_continuous( breaks = c(2008, 2010,2012,2014,2016,2018,2020)) + 
+  xlab("Year") + ylab("Amount of Content") + 
+  ggtitle("Amount of Content by Time") + 
+  theme(plot.title = element_text(hjust = 0.5)) 
+```
+
+Until 2013, there were more or less the same amount of Movies and TV Shows. However, since 2014 it appears that Netflix focused more on movies rather than on TV Shows.
+
+#### 4.3 Content Produced by Country
+
+To analyze the content produced by country, we'll use a scatter plot. The data preparation for this analysis will be the following:
+
+- Separate the countries in the variable 'country' as they are, in some cases, together and separated by a comma
+- Count the content produced by each country by type
+- Filter by type
+
+Let's start by separating the countries.
+
+```{r, message=FALSE}
+
+countries_sep<-netflix_titles %>% separate_rows(country,sep = ", ") %>% select(country,type)
+
+```
+
+I noticed that some countries had a comma in the end so we need to remove it to prevent duplicated countries in the next steps.
+
+```{r}
+countries_sep$country<-str_replace_all(countries_sep$country,",","")
+
+```
+
+Now that we have our countries separated, we can count the content produced by each one and create a final dataframe with the amount of shows and movies separated by country and type. Also, we'll select just the top 10 countries for a better visualization.
+
+```{r, message=FALSE}
+
+content_by_country<-countries_sep %>% na.omit(country) %>% group_by(country,type) %>% summarise(count=n()) %>% spread(type,value=count) %>% arrange(desc(Movie)) %>% top_n(10)
+
+content_by_country<-content_by_country[order(desc(content_by_country$Movie + content_by_country$`TV Show`)),]
+
+content_by_country<-content_by_country[1:10,]
+
+names(content_by_country)[1]<-"Country"
+```
+
+We will use ggplot again to visualize the amount of content by country
+
+```{r}
+ggplot(content_by_country,aes(Movie, `TV Show`, colour=Country)) + 
+  geom_point(size=8) + 
+  xlab("Movies") + ylab("TV Shows") + ggtitle("Netflix Content by Country") + 
+  theme(plot.title = element_text(hjust = 0.5)) 
+```
+
+Without surprises, USA is the top content producer country followed by India and United Kingdom.
+
+Below is a table with the amount of content by type produced by each of the top 10 countries.
+
+```{r}
+kable(content_by_country,caption="Content by Country")%>%kable_styling(bootstrap_options = c("striped", "hover","condensed"), full_width=F, position="left")
+```
+
+
+#### 4.4 Content by Rating
+
+For this analysis, we'll choose a pie chart using the library plotly. To prepare the data we just need to group the original dataset by type and rating and then count.
+
+```{r, message=FALSE}
+library(plotly)
+netflix_rating<- netflix_titles %>% group_by(type, rating) %>% summarise(count=n())
+
+plot_ly(netflix_rating, labels=~netflix_rating$rating,values=~netflix_rating$count,
+          type="pie", textposition="inside",textinfo="text + percent",
+          insidetextfont=list(color="White")) %>% 
+          layout(title="Netflix Content by Rating")
+  
+```
+
+The Top 4 ratings are TV-MA, TV-14, TV-PG and R.
+
+The rating **TV-MA** signifies content for mature audiences only and are not suitable for anyone under 17 years old as it may contain strong coarse language, explicit strong sexual content, nudity, or intense/graphic violence. 
+
+**TV-14** rated content may be inappropriate for children younger than 14 years old and it may mild to strong realistic violence, sexual references and mild to moderate use of language.
+
+The rating **TV-PG** signifies content with parental guidance suggested and may be innapropriate for younger children.
+
+Finally, **R** stands for "Restricted" and under 17 requires accompanying parent or adult guardian.
+
+About **41%** (40.85%) of the content available on Netflix **is not suitable for users under 17**.
+
+
+#### 4.5 Content by Duration
+
+In order to analyze the content by duration, we need to perform a series of steps:
+
+First, we need to create a new data frame containing the type, duration and also count, for each duration, the amount of Movies/TV Shows. The function 'spread' will be used in order to have one column for each type.
+
+```{r}
+netflix_duration<-netflix_titles %>% group_by(type, duration) %>% summarise(count=n()) %>% spread(type, count)
+names(netflix_duration)[3]<-"TV_Show"
+
+```
+
+Now we need to remove the words "Season", "Seasons" and "min" from the duration columns for further calculations.
+```{r}
+netflix_duration$duration<-str_remove_all(netflix_duration$duration,"[min|Seasons]")
+```
+
+The idea is to build two bar charts for each content type. 
+We can start with the TV Shows.
+
+We need to create a new data frame containing only the TV Shows. We'll do that by filtering the dataframe 'netflix_duration'.
+After that, we will calculate the percentages for each duration group and arrange them by descending order.
+
+```{r}
+shows_duration<-netflix_duration %>% select (duration,TV_Show) %>% filter(TV_Show != "NA") %>% mutate(pct=TV_Show/sum(TV_Show)) %>% arrange(desc(TV_Show))
+
+```
+
+Before the visualization, we need to order the levels of the variable 'duration' to ensure that the X axis will be ordered. 
+
+```{r}
+shows_duration$duration<-factor(shows_duration$duration, levels=c("1 ","2 ", "3 ", "4 ","5 ","6 ","7 ","8 ","9 ", "10 ","11 ","12 ","13 ","14 ","15 "))
+
+```
+
+Now, we can build the bar chart using ggplot. The library 'scales' was called to use the function 'percent' to show the percentages with 1 decimal place.
+
+```{r, message=FALSE}
+library(scales)
+bar_shows<-ggplot(shows_duration, aes(x=duration,TV_Show)) +         
+                  geom_col(fill=c("#FF3333", "#A0A0A0","#A0A0A0","#A0A0A0",                                                                       "#A0A0A0","#A0A0A0","#A0A0A0","#A0A0A0","#A0A0A0","#A0A0A0","#A0A0A0",
+                  "#A0A0A0","#A0A0A0","#A0A0A0","#A0A0A0"))+  
+                  geom_text(aes(label = percent(pct,.1)),vjust=-0.2,size=3) +
+                  xlab("Number of Seasons") + ylab("Amount") + 
+                  ggtitle("TV Shows by Amount of Seasons") +
+                  theme(plot.title = element_text(hjust = 0.5))
+
+bar_shows
+```
+
+It is clear that most of the TV Shows on Netflix has 1 season.
+
+Now, for the Movies the first part will be almost the same thing.
+
+```{r}
+movies_duration<-netflix_duration %>% select(duration, Movie) %>% filter(Movie != "NA")
+movies_duration$duration<-as.numeric(movies_duration$duration)
+```
+
+
+But now there's one detail to take into account.
+The duration of the movies is set in minutes so there is lot of different possibilities (example: 91,90,96,107,78 etc). It doesn't make sense to visualize the data in this way. To solve this problem, we need to group the duration by intervals. I chose 3 intervals: duration<90min, 90<=duration<=105 and duration>105min.
+
+To do this, we'll define a function to create the intervals and return a new column to add to our 'movies_duration' data frame.
+
+```{r}
+creates_intervals<-function(z)
+{
+  new_col<-NULL
+  for(i in 1:length(z))
+  {
+    
+    if (z[i]>=90 && z[i]<=105)
+    {
+      new_col[i]<-"[90-105]"
+    }
+    if (z[i]>=105)
+    {
+      new_col[i]<-"[>105]"
+    }
+    if (z[i]<90)
+    {
+      new_col[i]<-"[<90]"
+    }
+  }
+  
+  return(new_col)
+}
+
+movies_duration$Interval<-creates_intervals(movies_duration$duration)
+movies_duration$Interval<-as.factor(movies_duration$Interval)
+movies_duration<-movies_duration  %>% group_by(Interval) %>% summarise(count.Movie=sum(Movie)) %>% mutate(pct=count.Movie/sum(count.Movie))
+```
+
+Now the intervals are defined and we can visualize the data.
+
+```{r}
+bar_movies<-ggplot(movies_duration, aes(Interval,count.Movie)) +         
+                  geom_col(fill=c("#A0A0A0", "#FF3333","#A0A0A0")) +  
+                  geom_text(aes(label = scales::percent(pct)),vjust=-0.2,size=3) +
+                  xlab("Duration") + ylab("Amount") + 
+                  ggtitle("Movies by Duration") +
+                  theme(plot.title = element_text(hjust = 0.5))
+
+bar_movies
+```
+
+
+#### 4.6 Most Starred Actors
+
+The variable where actors are listed in is 'cast'. For each movie/tv show the cast is composed by many actors. In the original dataset, the actors in each row are separated by a comma. So, what we are going to do is create a new dataframe, called 'netflix_actors', containing only the variable 'cast' separated. Then, we'll group 'netflix_actors' by 'cast' and omit the NA values. Finally, we need to add a new column to count the occurrences of each actor and arrange it by descending order.
+
+```{r}
+netflix_actors<-netflix_titles %>% select(cast) %>% separate_rows(cast, sep=", ") %>% group_by(cast) %>% na.omit(cast)%>% summarise(count.Actors=n()) %>% arrange(desc(count.Actors))
+
+names(netflix_actors)[c(1,2)]<-c("Actor","Content")
+
+```
+
+Below is a table containing the Top 10 actors and number of content where they starred in.
+
+```{r}
+kable(netflix_actors[1:10,],caption="Top 10 Actors") %>% kable_styling(bootstrap_options = c("striped", "hover","condensed"), full_width=F, position="left")
+```
+
+
+#### 4.7 Top 10 Directors
+
+The process to group the directors by content produced is similar to the one used to determine the most starred actors.
+
+```{r}
+netflix_directors<-netflix_titles %>% select(director) %>% separate_rows(director, sep=", ") %>% group_by(director) %>% na.omit(director)%>% summarise(count.Director=n()) %>% arrange(desc(count.Director))
+
+names(netflix_directors)[c(1,2)]<-c("Director","Content Produced")
+
+```
+
+Here is a table with the Top 10 Directors on Netflix.
+
+```{r }
+kable(netflix_directors[1:10,], caption="Top 10 Directors") %>% kable_styling(bootstrap_options = c("striped", "hover","condensed"), full_width=F, position="left")
+
+```
+
+
+#### 4.7 Top 10 Genre
+
+
+
+```{r}
+netflix_genre<-netflix_titles %>% select(listed_in) %>% separate_rows(listed_in,sep=", ") %>% group_by(listed_in) %>% summarise(Genre=n()) %>% arrange(desc(Genre)) %>% mutate(pct=Genre/sum(Genre)*100)
+
+netflix_genre$listed_in<-factor(netflix_genre$listed_in,levels = rep(netflix_genre$listed_in))
+
+```
+
+Below is the bar chart of the Top 10 Genres on Netflix.
+
+```{r}
+ggplot(netflix_genre[1:10,], aes(listed_in[1:10],Genre[1:10])) +
+       geom_col(fill=c("#FF3333","#A0A0A0","#A0A0A0","#A0A0A0","#A0A0A0","#A0A0A0","#A0A0A0","#A0A0A0", "#A0A0A0","#A0A0A0"))+
+       theme(axis.text.x = element_text(angle = 60, hjust = 1)) +
+       xlab("Genre") + ylab("Amount of Content") + 
+       ggtitle("Top 10 Genre by amount of Content") +
+       theme(plot.title = element_text(hjust = 0.5))
+
+```
+
+
+
